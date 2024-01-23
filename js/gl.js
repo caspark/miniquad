@@ -8,10 +8,10 @@
 
 "use strict";
 
-const version = "0.3.12";
+const version = "0.4.10";
 
 const canvas = document.querySelector("#glcanvas");
-const gl = canvas.getContext("webgl");
+const gl = tryCreateWebGl2Context(canvas);
 if (gl === null) {
     alert("Unable to initialize WebGL. Your browser or machine may not support it.");
 }
@@ -27,7 +27,7 @@ canvas.focus();
 
 canvas.requestPointerLock = canvas.requestPointerLock ||
     canvas.mozRequestPointerLock ||
-    // pointer lock in any form is not supported on iOS safari 
+    // pointer lock in any form is not supported on iOS safari
     // https://developer.mozilla.org/en-US/docs/Web/API/Pointer_Lock_API#browser_compatibility
     (function () {});
 document.exitPointerLock = document.exitPointerLock ||
@@ -39,6 +39,17 @@ function assert(flag, message) {
     if (flag == false) {
         alert(message)
     }
+}
+
+function tryCreateWebGl2Context(canvas) {
+  console.info("Trying to create webgl 2 context");
+  let gl = canvas.getContext("webgl2");
+  if (gl === null) {
+    throw new Error("Unable to initialize WebGL 2.0 - try using a different (or newer) browser");
+  };
+  gl["getQueryObject"] = gl["getQueryParameter"];
+  console.info("Created webgl 2 context");
+  return gl;
 }
 
 function acquireVertexArrayObjectExtension(ctx) {
@@ -84,14 +95,14 @@ try {
     console.warn(e);
 }
 
-acquireVertexArrayObjectExtension(gl);
-acquireInstancedArraysExtension(gl);
-acquireDisjointTimerQueryExtension(gl);
+// acquireVertexArrayObjectExtension(gl);
+// acquireInstancedArraysExtension(gl);
+// acquireDisjointTimerQueryExtension(gl);
 
-// https://developer.mozilla.org/en-US/docs/Web/API/WEBGL_depth_texture
-if (gl.getExtension('WEBGL_depth_texture') == null) {
-    alert("Cant initialize WEBGL_depth_texture extension");
-}
+// // https://developer.mozilla.org/en-US/docs/Web/API/WEBGL_depth_texture
+// if (gl.getExtension('WEBGL_depth_texture') == null) {
+//     alert("Cant initialize WEBGL_depth_texture extension");
+// }
 
 function getArray(ptr, arr, n) {
     return new arr(wasm_memory.buffer, ptr, n);
@@ -1296,22 +1307,22 @@ var importObject = {
             FS.unique_id += 1;
             var xhr = new XMLHttpRequest();
             xhr.open('GET', url, true);
-            xhr.responseType = 'arraybuffer'; 
+            xhr.responseType = 'arraybuffer';
 
             xhr.onreadystatechange = function() {
 	        // looks like readyState === 4 will be fired on either successful or unsuccessful load:
 		// https://stackoverflow.com/a/19247992
                 if (this.readyState === 4) {
-                    if(this.status === 200) {  
+                    if(this.status === 200) {
                         var uInt8Array = new Uint8Array(this.response);
-    
+
                         FS.loaded_files[file_id] = uInt8Array;
                         wasm_exports.file_loaded(file_id);
                     } else {
                         FS.loaded_files[file_id] = null;
                         wasm_exports.file_loaded(file_id);
                     }
-                } 
+                }
             };
             xhr.send();
 
