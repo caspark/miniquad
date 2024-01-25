@@ -23,7 +23,7 @@ var wasm_memory;
 
 var high_dpi = false;
 
-canvas.focus();
+// canvas.focus();
 
 canvas.requestPointerLock = canvas.requestPointerLock ||
     canvas.mozRequestPointerLock ||
