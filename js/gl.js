@@ -41,6 +41,12 @@ function assert(flag, message) {
     }
 }
 
+// disable right click context menu action
+canvas.addEventListener("contextmenu", function (e) {
+    e.preventDefault();
+    return false;
+});
+
 function tryCreateWebGl2Context(canvas) {
   console.info("Trying to create webgl 2 context");
   let gl = canvas.getContext("webgl2");
