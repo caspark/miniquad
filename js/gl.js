@@ -95,7 +95,8 @@ function init_webgl(version) {
     }
 }
 
-canvas.focus();
+// caspark: don't focus canvas automatically
+// canvas.focus();
 
 canvas.requestPointerLock = canvas.requestPointerLock ||
     canvas.mozRequestPointerLock ||
