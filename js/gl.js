@@ -11,10 +11,12 @@
 const version = 1;
 
 const canvas = document.querySelector("#glcanvas");
-const gl = canvas.getContext("webgl");
+const gl = canvas.getContext("webgl2");
 if (gl === null) {
-    alert("Unable to initialize WebGL. Your browser or machine may not support it.");
+    alert("Unable to initialize WebGL 2.0. Your browser or machine may not support it.");
 }
+gl["getQueryObject"] = gl["getQueryParameter"];
+console.info("Created webgl 2 context");
 
 var clipboard = null;
 
@@ -31,7 +33,7 @@ canvas.focus();
 
 canvas.requestPointerLock = canvas.requestPointerLock ||
     canvas.mozRequestPointerLock ||
-    // pointer lock in any form is not supported on iOS safari 
+    // pointer lock in any form is not supported on iOS safari
     // https://developer.mozilla.org/en-US/docs/Web/API/Pointer_Lock_API#browser_compatibility
     (function () { });
 document.exitPointerLock = document.exitPointerLock ||
@@ -95,15 +97,16 @@ try {
     console.warn(e);
 }
 
-acquireVertexArrayObjectExtension(gl);
-acquireInstancedArraysExtension(gl);
-acquireDisjointTimerQueryExtension(gl);
-acquireDrawBuffers(gl);
+// caspark: disable extensions we don't need that don't seem to be in webgl2
+// acquireVertexArrayObjectExtension(gl);
+// acquireInstancedArraysExtension(gl);
+// acquireDisjointTimerQueryExtension(gl);
+// acquireDrawBuffers(gl);
 
-// https://developer.mozilla.org/en-US/docs/Web/API/WEBGL_depth_texture
-if (gl.getExtension('WEBGL_depth_texture') == null) {
-    alert("Cant initialize WEBGL_depth_texture extension");
-}
+// // https://developer.mozilla.org/en-US/docs/Web/API/WEBGL_depth_texture
+// if (gl.getExtension('WEBGL_depth_texture') == null) {
+//     alert("Cant initialize WEBGL_depth_texture extension");
+// }
 
 function getArray(ptr, arr, n) {
     return new arr(wasm_memory.buffer, ptr, n);
