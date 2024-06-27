@@ -42,6 +42,12 @@ document.exitPointerLock = document.exitPointerLock ||
     // pointer lock in any form is not supported on iOS safari
     (function () { });
 
+// disable right click context menu action
+canvas.addEventListener("contextmenu", function (e) {
+    e.preventDefault();
+    return false;
+});
+
 function assert(flag, message) {
     if (flag == false) {
         alert(message)
