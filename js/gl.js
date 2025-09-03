@@ -623,6 +623,17 @@ var emscripten_shaders_hack = false;
 
 var importObject = {
     env: {
+        // caspark: add functions necessary for render targets to work
+        glCheckFramebufferStatus: function (e) {
+            return gl.checkFramebufferStatus(e);
+        },
+        glReadBuffer: function (e) {
+            gl.readBuffer(e);
+        },
+        glBlitFramebuffer: function (srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter) {
+            gl.blitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
+        },
+        // caspark: end added functions
         console_debug: function (ptr) {
             console.debug(UTF8ToString(ptr));
         },
