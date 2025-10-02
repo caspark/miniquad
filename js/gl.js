@@ -98,8 +98,10 @@ function acquireDrawBuffers(ctx) {
 }
 
 try {
-    gl.getExtension("EXT_shader_texture_lod");
-    gl.getExtension("OES_standard_derivatives");
+  gl.getExtension("EXT_shader_texture_lod");
+  gl.getExtension("OES_standard_derivatives");
+  // caspark: acquire extension that enables RGBA16F texture formats: https://developer.mozilla.org/en-US/docs/Web/API/EXT_color_buffer_float
+  gl.getExtension("EXT_color_buffer_float");
 } catch (e) {
     console.warn(e);
 }
