@@ -89,6 +89,8 @@ function init_webgl(version) {
         }
     } else {
         gl = canvas.getContext("webgl2");
+        // caspark: acquire extension that enables RGBA16F texture formats: https://developer.mozilla.org/en-US/docs/Web/API/EXT_color_buffer_float
+        gl.getExtension("EXT_color_buffer_float");
     }
     if (gl === null) {
         alert("Unable to initialize WebGL. Your browser or machine may not support it.");
@@ -119,6 +121,7 @@ function assert(flag, message) {
         alert(message)
     }
 }
+
 
 function getArray(ptr, arr, n) {
     return new arr(wasm_memory.buffer, ptr, n);
