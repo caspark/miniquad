@@ -1164,14 +1164,16 @@ impl RenderingBackend for GlContext {
 
         let render_pass = self.passes.remove(pass_id);
 
-        unsafe { glDeleteFramebuffers(1, &render_pass.gl_fb as *const _) }
-
-        for color_texture in &render_pass.color_textures {
-            self.delete_texture(*color_texture);
+        unsafe {
+            glDeleteFramebuffers(1, &render_pass.gl_fb as *const _);
+            if let Some(resolves) = &render_pass.resolves {
+                for (resolve_fb, _) in resolves {
+                    glDeleteFramebuffers(1, resolve_fb as *const _);
+                }
+            }
         }
-        if let Some(depth_texture) = render_pass.depth_texture {
-            self.delete_texture(depth_texture);
-        }
+        // Textures NOT deleted — caller manages their lifetime.
+        // This matches the Metal backend's behavior.
     }
 
     fn new_pipeline(
