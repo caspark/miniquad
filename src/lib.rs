@@ -25,6 +25,7 @@ pub use graphics::*;
 mod default_icon;
 
 pub use native::gl;
+pub use native::{RawDisplayHandleData, RawWindowHandleData};
 
 #[derive(Clone)]
 pub(crate) struct ResourceManager<T> {
@@ -321,6 +322,133 @@ pub mod window {
     pub fn apple_view_ctrl() -> crate::native::apple::frameworks::ObjcId {
         let d = native_display().lock().unwrap();
         d.view_ctrl
+    }
+
+    /// Returns the raw window handle data, if available.
+    /// This is set by the platform backend after window creation.
+    pub fn raw_window_handle() -> Option<native::RawWindowHandleData> {
+        let d = native_display().lock().unwrap();
+        d.raw_window_handle
+    }
+
+    /// Returns the raw display handle data, if available.
+    /// This is set by the platform backend after window creation.
+    pub fn raw_display_handle() -> Option<native::RawDisplayHandleData> {
+        let d = native_display().lock().unwrap();
+        d.raw_display_handle
+    }
+}
+
+/// A wrapper that implements `raw_window_handle` traits for the current miniquad window.
+///
+/// Obtain via [`MiniquadWindow::new()`] after the event loop has started
+/// (i.e., inside the `EventHandler` or the closure passed to `miniquad::start`).
+#[cfg(feature = "rwh-06")]
+pub struct MiniquadWindow {
+    raw_window: native::RawWindowHandleData,
+    raw_display: native::RawDisplayHandleData,
+}
+
+#[cfg(feature = "rwh-06")]
+impl MiniquadWindow {
+    /// Create a new handle wrapper. Panics if window handles are not yet available.
+    pub fn new() -> Self {
+        let raw_window = window::raw_window_handle()
+            .expect("raw_window_handle not available yet (window not created?)");
+        let raw_display = window::raw_display_handle()
+            .expect("raw_display_handle not available yet (window not created?)");
+        Self {
+            raw_window,
+            raw_display,
+        }
+    }
+}
+
+#[cfg(feature = "rwh-06")]
+impl raw_window_handle::HasWindowHandle for MiniquadWindow {
+    fn window_handle(
+        &self,
+    ) -> Result<raw_window_handle::WindowHandle<'_>, raw_window_handle::HandleError> {
+        let raw = match self.raw_window {
+            #[cfg(target_os = "linux")]
+            native::RawWindowHandleData::Xlib { window, visual_id } => {
+                let mut h = raw_window_handle::XlibWindowHandle::new(window);
+                h.visual_id = visual_id;
+                raw_window_handle::RawWindowHandle::Xlib(h)
+            }
+            #[cfg(target_os = "linux")]
+            native::RawWindowHandleData::Wayland { surface } => {
+                let h = raw_window_handle::WaylandWindowHandle::new(
+                    std::ptr::NonNull::new(surface).expect("wayland surface is null"),
+                );
+                raw_window_handle::RawWindowHandle::Wayland(h)
+            }
+            #[cfg(target_os = "windows")]
+            native::RawWindowHandleData::Win32 { hwnd, hinstance } => {
+                let mut h = raw_window_handle::Win32WindowHandle::new(
+                    std::num::NonZeroIsize::new(hwnd).expect("HWND is zero"),
+                );
+                h.hinstance = std::num::NonZeroIsize::new(hinstance);
+                raw_window_handle::RawWindowHandle::Win32(h)
+            }
+            #[cfg(target_vendor = "apple")]
+            native::RawWindowHandleData::AppKit { ns_view } => {
+                let h = raw_window_handle::AppKitWindowHandle::new(
+                    std::ptr::NonNull::new(ns_view).expect("NSView is null"),
+                );
+                raw_window_handle::RawWindowHandle::AppKit(h)
+            }
+            #[cfg(target_arch = "wasm32")]
+            native::RawWindowHandleData::Web { canvas_id } => {
+                let h = raw_window_handle::WebWindowHandle::new(canvas_id);
+                raw_window_handle::RawWindowHandle::Web(h)
+            }
+        };
+        Ok(unsafe { raw_window_handle::WindowHandle::borrow_raw(raw) })
+    }
+}
+
+#[cfg(feature = "rwh-06")]
+impl raw_window_handle::HasDisplayHandle for MiniquadWindow {
+    fn display_handle(
+        &self,
+    ) -> Result<raw_window_handle::DisplayHandle<'_>, raw_window_handle::HandleError> {
+        let raw = match self.raw_display {
+            #[cfg(target_os = "linux")]
+            native::RawDisplayHandleData::Xlib { display, screen } => {
+                let h = raw_window_handle::XlibDisplayHandle::new(
+                    std::ptr::NonNull::new(display),
+                    screen,
+                );
+                raw_window_handle::RawDisplayHandle::Xlib(h)
+            }
+            #[cfg(target_os = "linux")]
+            native::RawDisplayHandleData::Wayland { display } => {
+                let h = raw_window_handle::WaylandDisplayHandle::new(
+                    std::ptr::NonNull::new(display).expect("wayland display is null"),
+                );
+                raw_window_handle::RawDisplayHandle::Wayland(h)
+            }
+            #[cfg(target_os = "windows")]
+            native::RawDisplayHandleData::Windows => {
+                raw_window_handle::RawDisplayHandle::Windows(
+                    raw_window_handle::WindowsDisplayHandle::new(),
+                )
+            }
+            #[cfg(target_vendor = "apple")]
+            native::RawDisplayHandleData::AppKit => {
+                raw_window_handle::RawDisplayHandle::AppKit(
+                    raw_window_handle::AppKitDisplayHandle::new(),
+                )
+            }
+            #[cfg(target_arch = "wasm32")]
+            native::RawDisplayHandleData::Web => {
+                raw_window_handle::RawDisplayHandle::Web(
+                    raw_window_handle::WebDisplayHandle::new(),
+                )
+            }
+        };
+        Ok(unsafe { raw_window_handle::DisplayHandle::borrow_raw(raw) })
     }
 }
 

@@ -65,12 +65,14 @@ where
         }));
     }
 
-    let version = match conf.platform.webgl_version {
-        crate::conf::WebGLVersion::WebGL1 => 1,
-        crate::conf::WebGLVersion::WebGL2 => 2,
-    };
-    unsafe {
-        init_webgl(version);
+    if !conf.platform.skip_graphics_context {
+        let version = match conf.platform.webgl_version {
+            crate::conf::WebGLVersion::WebGL1 => 1,
+            crate::conf::WebGLVersion::WebGL2 => 2,
+        };
+        unsafe {
+            init_webgl(version);
+        }
     }
 
     // setup initial canvas size
@@ -87,6 +89,10 @@ where
     crate::set_display(NativeDisplayData {
         blocking_event_loop: conf.platform.blocking_event_loop,
         dpi_scale,
+        raw_window_handle: Some(crate::native::RawWindowHandleData::Web {
+            canvas_id: 0, // index into JS object table; wgpu web uses canvas element directly
+        }),
+        raw_display_handle: Some(crate::native::RawDisplayHandleData::Web),
         ..NativeDisplayData::new(w, h, tx, clipboard)
     });
     EVENT_HANDLER.with(|g| {

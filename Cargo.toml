@@ -21,6 +21,12 @@ categories = ["rendering::graphics-api"]
 # disabled by default
 log-impl = []
 
+# Expose raw window/display handles via the raw-window-handle crate
+rwh-06 = ["dep:raw-window-handle"]
+
+[dependencies]
+raw-window-handle = { version = "0.6", optional = true, default-features = false }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
 

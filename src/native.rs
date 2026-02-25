@@ -2,6 +2,64 @@
 
 use std::sync::mpsc;
 
+/// Raw window handle data for each platform, stored after window creation.
+/// This is the miniquad-internal representation; when the `rwh-06` feature is
+/// enabled, these are converted to `raw_window_handle` types.
+#[derive(Debug, Clone, Copy)]
+pub enum RawWindowHandleData {
+    #[cfg(target_os = "linux")]
+    Xlib {
+        window: std::ffi::c_ulong,
+        visual_id: std::ffi::c_ulong,
+    },
+    #[cfg(target_os = "linux")]
+    Wayland {
+        surface: *mut std::ffi::c_void,
+    },
+    #[cfg(target_os = "windows")]
+    Win32 {
+        hwnd: isize,
+        hinstance: isize,
+    },
+    #[cfg(target_vendor = "apple")]
+    AppKit {
+        ns_view: *mut std::ffi::c_void,
+    },
+    #[cfg(target_arch = "wasm32")]
+    Web {
+        /// Index into JS object table (for raw-window-handle WebCanvasWindowHandle)
+        canvas_id: u32,
+    },
+}
+
+// SAFETY: The raw pointers stored here are OS window handles that remain valid
+// for the lifetime of the window. They are created and used on the main thread.
+unsafe impl Send for RawWindowHandleData {}
+unsafe impl Sync for RawWindowHandleData {}
+
+/// Raw display handle data for each platform.
+#[derive(Debug, Clone, Copy)]
+pub enum RawDisplayHandleData {
+    #[cfg(target_os = "linux")]
+    Xlib {
+        display: *mut std::ffi::c_void,
+        screen: i32,
+    },
+    #[cfg(target_os = "linux")]
+    Wayland {
+        display: *mut std::ffi::c_void,
+    },
+    #[cfg(target_os = "windows")]
+    Windows,
+    #[cfg(target_vendor = "apple")]
+    AppKit,
+    #[cfg(target_arch = "wasm32")]
+    Web,
+}
+
+unsafe impl Send for RawDisplayHandleData {}
+unsafe impl Sync for RawDisplayHandleData {}
+
 #[derive(Default)]
 pub(crate) struct DroppedFiles {
     pub paths: Vec<std::path::PathBuf>,
@@ -19,6 +77,11 @@ pub(crate) struct NativeDisplayData {
     pub clipboard: Box<dyn Clipboard>,
     pub dropped_files: DroppedFiles,
     pub blocking_event_loop: bool,
+
+    /// Raw window handle for external rendering libraries (e.g. wgpu).
+    pub raw_window_handle: Option<RawWindowHandleData>,
+    /// Raw display handle for external rendering libraries (e.g. wgpu).
+    pub raw_display_handle: Option<RawDisplayHandleData>,
 
     #[cfg(target_vendor = "apple")]
     pub view: crate::native::apple::frameworks::ObjcId,
@@ -51,6 +114,8 @@ impl NativeDisplayData {
             clipboard,
             dropped_files: Default::default(),
             blocking_event_loop: false,
+            raw_window_handle: None,
+            raw_display_handle: None,
             #[cfg(target_vendor = "apple")]
             gfx_api: crate::conf::AppleGfxApi::OpenGl,
             #[cfg(target_vendor = "apple")]

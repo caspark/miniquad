@@ -169,6 +169,17 @@ pub struct Platform {
     // for most purposes they are the same so we just use class name for simplicity
     // https://unix.stackexchange.com/questions/494169/
     pub linux_wm_class: &'static str,
+
+    /// If `true`, skip creating a graphics context (OpenGL/Metal/WebGL).
+    ///
+    /// The window will still be created and the event loop will still run,
+    /// but no rendering context will be initialized. This is useful when
+    /// using an external rendering library like wgpu that creates its own
+    /// GPU context from the raw window handle.
+    ///
+    /// When this is `true`, [`new_rendering_backend()`][super::window::new_rendering_backend]
+    /// will panic.
+    pub skip_graphics_context: bool,
 }
 
 impl Default for Platform {
@@ -183,6 +194,7 @@ impl Default for Platform {
             framebuffer_alpha: false,
             wayland_decorations: WaylandDecorations::default(),
             linux_wm_class: "miniquad-application",
+            skip_graphics_context: false,
         }
     }
 }

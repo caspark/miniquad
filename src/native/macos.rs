@@ -1084,21 +1084,34 @@ where
     //let () = msg_send![window, setReleasedWhenClosed: NO];
     let () = msg_send![window, setTitle: title];
 
-    let view = match conf.platform.apple_gfx_api {
-        AppleGfxApi::OpenGl => create_opengl_view(&mut display, conf.sample_count, conf.high_dpi),
-        AppleGfxApi::Metal => create_metal_view(&mut display, conf.sample_count, conf.high_dpi),
+    let view = if conf.platform.skip_graphics_context {
+        // Create a plain NSView (no GL or Metal context)
+        let view: ObjcId = msg_send![class!(NSView), alloc];
+        let view: ObjcId = msg_send![view, init];
+        view
+    } else {
+        match conf.platform.apple_gfx_api {
+            AppleGfxApi::OpenGl => create_opengl_view(&mut display, conf.sample_count, conf.high_dpi),
+            AppleGfxApi::Metal => create_metal_view(&mut display, conf.sample_count, conf.high_dpi),
+        }
     };
     {
         let mut d = native_display().lock().unwrap();
         d.view = view;
+        d.raw_window_handle = Some(crate::native::RawWindowHandleData::AppKit {
+            ns_view: view as *mut std::ffi::c_void,
+        });
+        d.raw_display_handle = Some(crate::native::RawDisplayHandleData::AppKit);
     }
-    (*view).set_ivar("display_ptr", &mut display as *mut _ as *mut c_void);
+    if !conf.platform.skip_graphics_context {
+        (*view).set_ivar("display_ptr", &mut display as *mut _ as *mut c_void);
+    }
 
     display.window = window;
     display.view = view;
 
     // cannot place it to create_opengl_view, because it should be called after setContentView
-    if conf.platform.apple_gfx_api == AppleGfxApi::OpenGl {
+    if !conf.platform.skip_graphics_context && conf.platform.apple_gfx_api == AppleGfxApi::OpenGl {
         msg_send_![display.gl_context, setView:view];
         msg_send_![display.gl_context, makeCurrentContext];
 
@@ -1131,19 +1144,21 @@ where
 
     // Found this here: https://github.com/kovidgoyal/kitty/issues/6341#issuecomment-1578348104
     let current_runloop = msg_send_![class!(NSRunLoop), currentRunLoop];
-    let timer = match conf.platform.apple_gfx_api {
-        AppleGfxApi::OpenGl => msg_send_![class!(NSTimer), timerWithTimeInterval:0.016 // ~60FPS
-                                                           target:view
-                                                           selector:sel!(setNeedsDisplayHack)
-                                                           userInfo:nil
-                                                           repeats:YES],
-        AppleGfxApi::Metal => msg_send_![class!(NSTimer), timerWithTimeInterval:0.016 // ~60FPS
-                                                          target:view
-                                                          selector:sel!(draw)
-                                                          userInfo:nil
-                                                          repeats:YES],
-    };
-    msg_send_![current_runloop, addTimer:timer forMode:NSEventTrackingRunLoopMode];
+    if !conf.platform.skip_graphics_context {
+        let timer = match conf.platform.apple_gfx_api {
+            AppleGfxApi::OpenGl => msg_send_![class!(NSTimer), timerWithTimeInterval:0.016 // ~60FPS
+                                                               target:view
+                                                               selector:sel!(setNeedsDisplayHack)
+                                                               userInfo:nil
+                                                               repeats:YES],
+            AppleGfxApi::Metal => msg_send_![class!(NSTimer), timerWithTimeInterval:0.016 // ~60FPS
+                                                              target:view
+                                                              selector:sel!(draw)
+                                                              userInfo:nil
+                                                              repeats:YES],
+        };
+        msg_send_![current_runloop, addTimer:timer forMode:NSEventTrackingRunLoopMode];
+    }
 
     // Basically reimplementing msg_send![ns_app, run] here
     let distant_future: ObjcId = msg_send![class!(NSDate), distantFuture];
@@ -1177,7 +1192,28 @@ where
         }
 
         if !conf.platform.blocking_event_loop || display.update_requested {
-            perform_redraw(&mut display, conf.platform.apple_gfx_api, false);
+            if conf.platform.skip_graphics_context {
+                // When skipping graphics context, just call update/draw directly
+                // without any GL/Metal buffer swapping
+                if display.event_handler.is_none() {
+                    let f = display.f.take().unwrap();
+                    display.event_handler = Some(f());
+                }
+                if let Some(event_handler) = display.context() {
+                    event_handler.update();
+                    event_handler.draw();
+                }
+                display.update_requested = false;
+                {
+                    let d = native_display().lock().unwrap();
+                    if d.quit_requested || d.quit_ordered {
+                        drop(d);
+                        let () = msg_send![display.window, performClose: nil];
+                    }
+                }
+            } else {
+                perform_redraw(&mut display, conf.platform.apple_gfx_api, false);
+            }
         }
     }
 }

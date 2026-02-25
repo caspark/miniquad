@@ -11,6 +11,8 @@
 const version = 2;
 
 const canvas = document.querySelector("#glcanvas");
+// Set data-raw-handle attribute for wgpu web surface creation via raw-window-handle
+canvas.setAttribute("data-raw-handle", "0");
 var gl;
 
 var clipboard = null;

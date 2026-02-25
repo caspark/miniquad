@@ -926,19 +926,31 @@ where
             high_dpi: conf.high_dpi,
             dpi_scale: display.window_scale,
             blocking_event_loop: conf.platform.blocking_event_loop,
+            raw_window_handle: Some(crate::native::RawWindowHandleData::Win32 {
+                hwnd: wnd as isize,
+                hinstance: GetModuleHandleW(NULL as _) as isize,
+            }),
+            raw_display_handle: Some(crate::native::RawDisplayHandleData::Windows),
             ..NativeDisplayData::new(conf.window_width, conf.window_height, tx, clipboard)
         });
 
         display.update_dimensions(wnd);
 
-        let mut wgl = wgl::Wgl::new(&mut display);
-        let gl_ctx = wgl.create_context(
-            &mut display,
-            conf.sample_count,
-            conf.platform.swap_interval.unwrap_or(1),
-        );
+        let skip_gfx = conf.platform.skip_graphics_context;
 
-        super::gl::load_gl_funcs(|proc| display.get_proc_address(proc));
+        let gl_ctx = if !skip_gfx {
+            let mut wgl = wgl::Wgl::new(&mut display);
+            let ctx = wgl.create_context(
+                &mut display,
+                conf.sample_count,
+                conf.platform.swap_interval.unwrap_or(1),
+            );
+
+            super::gl::load_gl_funcs(|proc| display.get_proc_address(proc));
+            Some(ctx)
+        } else {
+            None
+        };
 
         display.event_handler = Some(f());
 
@@ -977,7 +989,9 @@ where
                 display.event_handler.as_mut().unwrap().update();
                 display.event_handler.as_mut().unwrap().draw();
 
-                SwapBuffers(display.dc);
+                if !skip_gfx {
+                    SwapBuffers(display.dc);
+                }
             }
 
             if display.update_dimensions(wnd) {
@@ -996,7 +1010,9 @@ where
             }
         }
 
-        (display.libopengl32.wglDeleteContext)(gl_ctx);
+        if let Some(gl_ctx) = gl_ctx {
+            (display.libopengl32.wglDeleteContext)(gl_ctx);
+        }
         DestroyWindow(wnd);
     }
 }

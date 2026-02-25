@@ -425,6 +425,89 @@ impl X11Display {
     }
 }
 
+/// Event loop that creates a window without any graphics context.
+/// Used when `skip_graphics_context` is true, allowing external renderers (e.g. wgpu)
+/// to create their own GPU context on the window.
+unsafe fn no_gl_main_loop<F>(
+    mut display: X11Display,
+    conf: &crate::conf::Conf,
+    f: &mut Option<F>,
+    screen: i32,
+) where
+    F: 'static + FnOnce() -> Box<dyn EventHandler>,
+{
+    // Create window with default visual (no GL visual needed)
+    display.window =
+        display
+            .libx11
+            .create_window(display.root, display.display, std::ptr::null_mut(), 0, conf);
+
+    display.init_drag_n_drop();
+    display.libx11.show_window(display.display, display.window);
+
+    (display.libx11.XFlush)(display.display);
+
+    let (w, h) = display
+        .libx11
+        .query_window_size(display.display, display.window);
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let clipboard = Box::new(clipboard::X11Clipboard::new(
+        display.libx11.clone(),
+        display.display,
+        display.window,
+    ));
+    crate::set_display(NativeDisplayData {
+        high_dpi: conf.high_dpi,
+        dpi_scale: display.libx11.update_system_dpi(display.display),
+        blocking_event_loop: conf.platform.blocking_event_loop,
+        raw_window_handle: Some(crate::native::RawWindowHandleData::Xlib {
+            window: display.window,
+            visual_id: 0,
+        }),
+        raw_display_handle: Some(crate::native::RawDisplayHandleData::Xlib {
+            display: display.display as *mut std::ffi::c_void,
+            screen,
+        }),
+        ..NativeDisplayData::new(w, h, tx, clipboard)
+    });
+    if conf.fullscreen {
+        display.set_fullscreen(display.window, true);
+    }
+
+    let mut event_handler = (f.take().unwrap())();
+
+    while !crate::native_display().try_lock().unwrap().quit_ordered {
+        while let Ok(request) = rx.try_recv() {
+            display.process_request(request);
+        }
+
+        let mut count = (display.libx11.XPending)(display.display);
+        let block_on_wait = conf.platform.blocking_event_loop && !display.update_requested;
+        if block_on_wait {
+            count += 1;
+        }
+
+        for _ in 0..count {
+            let mut xevent = _XEvent { type_0: 0 };
+            (display.libx11.XNextEvent)(display.display, &mut xevent);
+            display.process_event(&mut xevent, &mut *event_handler);
+        }
+
+        if !conf.platform.blocking_event_loop || display.update_requested {
+            display.update_requested = false;
+            event_handler.update();
+            event_handler.draw();
+
+            (display.libx11.XFlush)(display.display);
+        }
+    }
+
+    (display.libx11.XUnmapWindow)(display.display, display.window);
+    (display.libx11.XDestroyWindow)(display.display, display.window);
+    (display.libx11.XCloseDisplay)(display.display);
+}
+
 unsafe fn glx_main_loop<F>(
     mut display: X11Display,
     conf: &crate::conf::Conf,
@@ -473,6 +556,14 @@ where
         high_dpi: conf.high_dpi,
         dpi_scale: display.libx11.update_system_dpi(display.display),
         blocking_event_loop: conf.platform.blocking_event_loop,
+        raw_window_handle: Some(crate::native::RawWindowHandleData::Xlib {
+            window: display.window,
+            visual_id: 0,
+        }),
+        raw_display_handle: Some(crate::native::RawDisplayHandleData::Xlib {
+            display: display.display as *mut std::ffi::c_void,
+            screen,
+        }),
         ..NativeDisplayData::new(w, h, tx, clipboard)
     });
     if conf.fullscreen {
@@ -583,6 +674,14 @@ where
         high_dpi: conf.high_dpi,
         dpi_scale: display.libx11.update_system_dpi(display.display),
         blocking_event_loop: conf.platform.blocking_event_loop,
+        raw_window_handle: Some(crate::native::RawWindowHandleData::Xlib {
+            window: display.window,
+            visual_id: 0,
+        }),
+        raw_display_handle: Some(crate::native::RawDisplayHandleData::Xlib {
+            display: display.display as *mut std::ffi::c_void,
+            screen: 0,  // EGL path doesn't track screen number
+        }),
         ..NativeDisplayData::new(w, h, tx, clipboard)
     });
     if conf.fullscreen {
@@ -680,21 +779,25 @@ where
             .libxi
             .query_xi_extension(&mut display.libx11, display.display);
 
-        match conf.platform.linux_x11_gl {
-            crate::conf::LinuxX11Gl::GLXOnly => {
-                glx_main_loop(display, conf, f, x11_screen).ok().unwrap();
-            }
-            crate::conf::LinuxX11Gl::EGLOnly => {
-                egl_main_loop(display, conf, f).ok().unwrap();
-            }
-            crate::conf::LinuxX11Gl::GLXWithEGLFallback => {
-                if let Err(display) = glx_main_loop(display, conf, f, x11_screen) {
+        if conf.platform.skip_graphics_context {
+            no_gl_main_loop(display, conf, f, x11_screen);
+        } else {
+            match conf.platform.linux_x11_gl {
+                crate::conf::LinuxX11Gl::GLXOnly => {
+                    glx_main_loop(display, conf, f, x11_screen).ok().unwrap();
+                }
+                crate::conf::LinuxX11Gl::EGLOnly => {
                     egl_main_loop(display, conf, f).ok().unwrap();
                 }
-            }
-            crate::conf::LinuxX11Gl::EGLWithGLXFallback => {
-                if let Err(display) = egl_main_loop(display, conf, f) {
-                    glx_main_loop(display, conf, f, x11_screen).ok().unwrap();
+                crate::conf::LinuxX11Gl::GLXWithEGLFallback => {
+                    if let Err(display) = glx_main_loop(display, conf, f, x11_screen) {
+                        egl_main_loop(display, conf, f).ok().unwrap();
+                    }
+                }
+                crate::conf::LinuxX11Gl::EGLWithGLXFallback => {
+                    if let Err(display) = egl_main_loop(display, conf, f) {
+                        glx_main_loop(display, conf, f, x11_screen).ok().unwrap();
+                    }
                 }
             }
         }

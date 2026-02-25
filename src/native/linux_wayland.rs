@@ -1121,63 +1121,95 @@ where
             high_dpi: conf.high_dpi,
             dpi_scale: 1., // At this point dpi_scale is not known to us
             blocking_event_loop: conf.platform.blocking_event_loop,
+            raw_display_handle: Some(crate::native::RawDisplayHandleData::Wayland {
+                display: wdisplay as *mut std::ffi::c_void,
+            }),
+            // raw_window_handle will be set after surface is created
             ..NativeDisplayData::new(conf.window_width, conf.window_height, tx, clipboard)
         });
 
         (display.client.wl_display_dispatch)(display.display);
         (display.client.wl_display_dispatch)(display.display);
 
+        // Set raw_window_handle now that surface is created
+        {
+            let mut d = crate::native_display().try_lock().unwrap();
+            d.raw_window_handle = Some(crate::native::RawWindowHandleData::Wayland {
+                surface: display.surface as *mut std::ffi::c_void,
+            });
+        }
+
         display.init_data_device();
         display.init_pointer_context();
 
-        let mut libegl = egl::LibEgl::try_load().ok()?;
-        let (context, config, egl_display) = egl::create_egl_context(
-            &mut libegl,
-            wdisplay as *mut _,
-            conf.platform.framebuffer_alpha,
-            conf.sample_count,
-        )
-        .unwrap();
+        let mut libegl;
+        let mut egl_display = std::ptr::null_mut();
+        let mut egl_surface = std::ptr::null_mut();
 
-        {
-            // At this point we have been told the dpi_scale
-            let d = crate::native_display().try_lock().unwrap();
-            display.egl_window = (display.egl.wl_egl_window_create)(
-                display.surface as _,
-                d.screen_width,
-                d.screen_height,
+        if !conf.platform.skip_graphics_context {
+            libegl = egl::LibEgl::try_load().ok()?;
+            let (context, config, egl_disp) = egl::create_egl_context(
+                &mut libegl,
+                wdisplay as *mut _,
+                conf.platform.framebuffer_alpha,
+                conf.sample_count,
+            )
+            .unwrap();
+            egl_display = egl_disp;
+
+            {
+                // At this point we have been told the dpi_scale
+                let d = crate::native_display().try_lock().unwrap();
+                display.egl_window = (display.egl.wl_egl_window_create)(
+                    display.surface as _,
+                    d.screen_width,
+                    d.screen_height,
+                );
+                wl_request!(
+                    display.client,
+                    display.surface,
+                    WL_SURFACE_SET_BUFFER_SCALE,
+                    d.dpi_scale as i32
+                );
+            }
+
+            egl_surface = (libegl.eglCreateWindowSurface)(
+                egl_display,
+                config,
+                display.egl_window as _,
+                std::ptr::null_mut(),
             );
-            wl_request!(
-                display.client,
-                display.surface,
-                WL_SURFACE_SET_BUFFER_SCALE,
-                d.dpi_scale as i32
-            );
-        }
 
-        let egl_surface = (libegl.eglCreateWindowSurface)(
-            egl_display,
-            config,
-            display.egl_window as _,
-            std::ptr::null_mut(),
-        );
+            if egl_surface.is_null() {
+                // == EGL_NO_SURFACE
+                panic!("surface creation failed");
+            }
+            if (libegl.eglMakeCurrent)(egl_display, egl_surface, egl_surface, context) == 0 {
+                panic!("eglMakeCurrent failed");
+            }
 
-        if egl_surface.is_null() {
-            // == EGL_NO_SURFACE
-            panic!("surface creation failed");
-        }
-        if (libegl.eglMakeCurrent)(egl_display, egl_surface, egl_surface, context) == 0 {
-            panic!("eglMakeCurrent failed");
-        }
+            if (libegl.eglSwapInterval)(egl_display, conf.platform.swap_interval.unwrap_or(1)) == 0 {
+                eprintln!("eglSwapInterval failed");
+            }
 
-        if (libegl.eglSwapInterval)(egl_display, conf.platform.swap_interval.unwrap_or(1)) == 0 {
-            eprintln!("eglSwapInterval failed");
+            crate::native::gl::load_gl_funcs(|proc| {
+                let name = std::ffi::CString::new(proc).unwrap();
+                (libegl.eglGetProcAddress)(name.as_ptr() as _)
+            });
+        } else {
+            // Need libegl to be initialized even if unused, to satisfy the variable binding
+            libegl = egl::LibEgl::try_load().ok()?;
+            // Still need egl_window for wl_surface buffer scaling
+            {
+                let d = crate::native_display().try_lock().unwrap();
+                wl_request!(
+                    display.client,
+                    display.surface,
+                    WL_SURFACE_SET_BUFFER_SCALE,
+                    d.dpi_scale as i32
+                );
+            }
         }
-
-        crate::native::gl::load_gl_funcs(|proc| {
-            let name = std::ffi::CString::new(proc).unwrap();
-            (libegl.eglGetProcAddress)(name.as_ptr() as _)
-        });
 
         display.decorations =
             decorations::Decorations::new(&mut display, conf.platform.wayland_decorations);
@@ -1306,7 +1338,9 @@ where
                 display.update_requested = false;
                 event_handler.update();
                 event_handler.draw();
-                (libegl.eglSwapBuffers)(egl_display, egl_surface);
+                if !conf.platform.skip_graphics_context {
+                    (libegl.eglSwapBuffers)(egl_display, egl_surface);
+                }
             }
         }
     }
