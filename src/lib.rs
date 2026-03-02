@@ -131,6 +131,13 @@ pub mod window {
         Box::new(GlContext::new())
     }
 
+    /// Whether the window was created without a graphics context.
+    /// When true, `new_rendering_backend()` will panic.
+    pub fn skip_graphics_context() -> bool {
+        let d = native_display().lock().unwrap();
+        d.skip_graphics_context
+    }
+
     /// The current framebuffer size in pixels
     /// NOTE: [High DPI Rendering](../conf/index.html#high-dpi-rendering)
     pub fn screen_size() -> (f32, f32) {

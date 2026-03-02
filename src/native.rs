@@ -77,6 +77,7 @@ pub(crate) struct NativeDisplayData {
     pub clipboard: Box<dyn Clipboard>,
     pub dropped_files: DroppedFiles,
     pub blocking_event_loop: bool,
+    pub skip_graphics_context: bool,
 
     /// Raw window handle for external rendering libraries (e.g. wgpu).
     pub raw_window_handle: Option<RawWindowHandleData>,
@@ -114,6 +115,7 @@ impl NativeDisplayData {
             clipboard,
             dropped_files: Default::default(),
             blocking_event_loop: false,
+            skip_graphics_context: false,
             raw_window_handle: None,
             raw_display_handle: None,
             #[cfg(target_vendor = "apple")]

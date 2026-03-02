@@ -461,6 +461,7 @@ unsafe fn no_gl_main_loop<F>(
         high_dpi: conf.high_dpi,
         dpi_scale: display.libx11.update_system_dpi(display.display),
         blocking_event_loop: conf.platform.blocking_event_loop,
+        skip_graphics_context: true,
         raw_window_handle: Some(crate::native::RawWindowHandleData::Xlib {
             window: display.window,
             visual_id: 0,
