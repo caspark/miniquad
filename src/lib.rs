@@ -8,6 +8,7 @@
 )]
 
 pub mod conf;
+pub mod dummy_backend;
 mod event;
 pub mod fs;
 pub mod graphics;
