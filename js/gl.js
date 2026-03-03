@@ -13,7 +13,22 @@ const version = 2;
 const canvas = document.querySelector("#glcanvas");
 // Set data-raw-handle attribute for wgpu web surface creation via raw-window-handle
 canvas.setAttribute("data-raw-handle", "0");
-var gl;
+// gl starts as a Proxy that silently no-ops all method calls.
+// This prevents crashes when skip_graphics_context is true (wgpu mode)
+// but JS GL wrapper functions are still called.
+// When init_webgl() runs, gl is replaced with the real WebGL2 context.
+var gl = new Proxy({}, { get: function(target, name) {
+    if (name in target) return target[name];
+    // create* functions must return a truthy object to avoid error paths
+    if (typeof name === 'string' && name.startsWith('create')) {
+        return function() { return {}; };
+    }
+    // getParameter, getProgramParameter etc return safe defaults
+    if (typeof name === 'string' && name.startsWith('get')) {
+        return function() { return 0; };
+    }
+    return function() {};
+}});
 
 var clipboard = null;
 

@@ -88,6 +88,7 @@ where
     let clipboard = Box::new(Clipboard);
     crate::set_display(NativeDisplayData {
         blocking_event_loop: conf.platform.blocking_event_loop,
+        skip_graphics_context: conf.platform.skip_graphics_context,
         dpi_scale,
         raw_window_handle: Some(crate::native::RawWindowHandleData::Web {
             canvas_id: 0, // index into JS object table; wgpu web uses canvas element directly
