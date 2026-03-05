@@ -926,6 +926,7 @@ where
             high_dpi: conf.high_dpi,
             dpi_scale: display.window_scale,
             blocking_event_loop: conf.platform.blocking_event_loop,
+            skip_graphics_context: conf.platform.skip_graphics_context,
             raw_window_handle: Some(crate::native::RawWindowHandleData::Win32 {
                 hwnd: wnd as isize,
                 hinstance: GetModuleHandleW(NULL as _) as isize,

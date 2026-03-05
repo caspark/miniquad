@@ -1009,6 +1009,7 @@ where
         high_dpi: conf.high_dpi,
         gfx_api: conf.platform.apple_gfx_api,
         blocking_event_loop: conf.platform.blocking_event_loop,
+        skip_graphics_context: conf.platform.skip_graphics_context,
         ..NativeDisplayData::new(conf.window_width, conf.window_height, tx, clipboard)
     });
 
